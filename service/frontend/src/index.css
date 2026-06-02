@@ -78,6 +78,46 @@ body {
   min-height: 100vh;
 }
 
+.agent-name-with-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.agent-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agent-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #2f8cff;
+  color: #fff;
+  border: 1px solid rgba(172, 210, 255, 0.7);
+  box-shadow: 0 0 0 2px rgba(47, 140, 255, 0.12);
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.leaderboard-chart-agent-name {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* Background Pattern */
 body::before {
   content: '';

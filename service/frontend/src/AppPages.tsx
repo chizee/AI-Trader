@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 
 import {
+  AgentName,
   API_BASE,
   type AgentInfo,
   COPY_TRADING_PAGE_SIZE,
@@ -22,6 +23,7 @@ import {
   getCurrentETTime,
   getInstrumentLabel,
   getLeaderboardDays,
+  isVerifiedAgent,
   isUSMarketOpen,
   useLanguage,
 } from './appShared'
@@ -1195,7 +1197,9 @@ export function SignalsFeed({ token }: { token?: string | null }) {
       if (res.ok) {
         return {
           agent_id: data.agent_id || agentId,
-          agent_name: data.agent_name || `Agent ${agentId}`
+          agent_name: data.agent_name || `Agent ${agentId}`,
+          agent_identity_status: data.agent_identity_status,
+          agent_is_verified: data.agent_is_verified
         }
       }
     } catch (e) {
@@ -1351,7 +1355,7 @@ export function SignalsFeed({ token }: { token?: string | null }) {
         // Second level: Show signals from selected agent
         <div>
           <button className="back-button" onClick={handleBack}>
-            ← {language === 'zh' ? '返回' : 'Back'} | {selectedAgent.agent_name}
+            ← {language === 'zh' ? '返回' : 'Back'} | <AgentName name={selectedAgent.agent_name} verified={isVerifiedAgent(selectedAgent, 'agent')} />
           </button>
 
           {/* Signal type tabs */}
@@ -1535,7 +1539,7 @@ export function SignalsFeed({ token }: { token?: string | null }) {
                 onClick={() => handleAgentClick(agent)}
               >
                 <div className="agent-header">
-                  <span className="agent-name">{agent.agent_name}</span>
+                  <AgentName name={agent.agent_name} verified={isVerifiedAgent(agent, 'agent')} className="agent-name" />
                 </div>
                 <div className="agent-stats">
                   <div className="agent-stat">
@@ -1787,7 +1791,9 @@ export function CopyTradingPage({ token }: { token: string }) {
                         #{rank}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600 }}>{provider.name || `Agent ${provider.agent_id}`}</div>
+                        <div style={{ fontWeight: 600 }}>
+                          <AgentName name={provider.name || `Agent ${provider.agent_id}`} verified={isVerifiedAgent(provider)} />
+                        </div>
                         <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                           {language === 'zh' ? '最近活跃' : 'Recent activity'}: {provider.recent_activity_at ? new Date(provider.recent_activity_at).toLocaleString() : '-'}
                         </div>
@@ -1906,7 +1912,9 @@ export function CopyTradingPage({ token }: { token: string }) {
                         {(f.leader_name || 'A').charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 500 }}>{f.leader_name || `Agent ${f.leader_id}`}</div>
+                        <div style={{ fontWeight: 500 }}>
+                          <AgentName name={f.leader_name || `Agent ${f.leader_id}`} verified={isVerifiedAgent(f, 'leader')} />
+                        </div>
                         <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                           {language === 'zh' ? '自 ' : 'Since '}
                           {new Date(f.subscribed_at).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-US')}
@@ -2265,9 +2273,11 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                     borderRadius: '999px',
                     background: LEADERBOARD_LINE_COLORS[idx % LEADERBOARD_LINE_COLORS.length]
                   }}></span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', fontWeight: 600 }}>
-                    {agent.name}
-                  </span>
+                  <AgentName
+                    name={agent.name}
+                    verified={isVerifiedAgent(agent)}
+                    className="leaderboard-chart-agent-name"
+                  />
                 </button>
                 )
               })}
@@ -2321,7 +2331,9 @@ export function LeaderboardPage({ token }: { token?: string | null }) {
                     {rank}
                   </div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '16px' }}>{agent.name}</div>
+                    <div style={{ fontWeight: 600, fontSize: '16px' }}>
+                      <AgentName name={agent.name} verified={isVerifiedAgent(agent)} />
+                    </div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                       {language === 'zh' ? '最后更新' : 'Last updated'}: {agent.history ? agent.history[agent.history.length - 1]?.recorded_at?.split('T')[0] : '-'}
                     </div>

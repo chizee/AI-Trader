@@ -17,6 +17,8 @@ from routes_shared import (
     PRICE_QUOTE_CACHE_TTL_SECONDS,
     RouteContext,
     TRENDING_CACHE_KEY,
+    agent_identity_status,
+    agent_is_verified,
     allow_sync_price_fetch_in_api,
     attach_experiment_unread_notice,
     check_price_api_rate_limit,
@@ -81,7 +83,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         now_ts = time.time()
         redis_cache_key = (
             f'{LEADERBOARD_CACHE_KEY_PREFIX}:'
-            f'v=drawdown-chart-1:'
+            f'v=identity-1:'
             f'metric={metric}:'
             f'limit={limit}:days={days}:offset={offset}:history={int(include_history)}'
         )
@@ -141,6 +143,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                 SELECT
                     a.id AS agent_id,
                     a.name,
+                    a.identity_status,
                     ale.reason AS leaderboard_exclusion_reason,
                     COALESCE(a.deposited, 0) AS deposited,
                     (
@@ -189,7 +192,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
                  AND COALESCE(ale.active, 1) = 1
                 LEFT JOIN positions p ON p.agent_id = a.id
                 WHERE ale.agent_id IS NULL
-                GROUP BY a.id, a.name, a.cash, a.deposited, ale.reason
+                GROUP BY a.id, a.name, a.identity_status, a.cash, a.deposited, ale.reason
             )
             SELECT
                 ap.*,
@@ -221,6 +224,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             {
                 'agent_id': row['agent_id'],
                 'name': row['name'],
+                'identity_status': row['identity_status'],
                 'leaderboard_exclusion_reason': row['leaderboard_exclusion_reason'],
                 'deposited': row['deposited'],
                 'profit': clamp_profit_for_display(row['profit']),
@@ -321,6 +325,8 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             result.append({
                 'agent_id': agent['agent_id'],
                 'name': agent['name'],
+                'identity_status': agent_identity_status(agent),
+                'is_verified': agent_is_verified(agent),
                 'deposited': agent['deposited'],
                 'total_profit': clamp_profit_for_display(agent['profit']),
                 'current_profit': clamp_profit_for_display(agent['profit']),
@@ -412,7 +418,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT id, name
+            SELECT id, name, identity_status
             FROM agents
             WHERE NOT EXISTS (
                 SELECT 1
@@ -458,6 +464,8 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             result.append({
                 'agent_id': agent_id,
                 'name': agent['name'],
+                'identity_status': agent_identity_status(agent),
+                'is_verified': agent_is_verified(agent),
                 'position_pnl': total_position_pnl,
                 'trade_count': trade_count,
                 'position_count': len(positions),
@@ -675,10 +683,11 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
     async def get_agent_positions(agent_id: int):
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('SELECT name, cash FROM agents WHERE id = ?', (agent_id,))
+        cursor.execute('SELECT name, cash, identity_status FROM agents WHERE id = ?', (agent_id,))
         agent_row = cursor.fetchone()
         agent_name = agent_row['name'] if agent_row else 'Unknown'
         agent_cash = agent_row['cash'] if agent_row else 0
+        agent_identity = agent_identity_status(agent_row)
 
         cursor.execute(
             """
@@ -727,6 +736,8 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             'total_pnl': total_pnl,
             'position_count': len(positions),
             'agent_name': agent_name,
+            'agent_identity_status': agent_identity,
+            'agent_is_verified': agent_identity == 'verified',
             'cash': agent_cash,
         }
 
@@ -739,6 +750,7 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
             SELECT
                 a.id,
                 a.name,
+                a.identity_status,
                 a.cash,
                 (SELECT MAX(created_at) FROM signals WHERE agent_id = a.id) AS recent_activity_at,
                 (SELECT COUNT(*) FROM positions WHERE agent_id = a.id) AS position_count
@@ -756,6 +768,8 @@ def register_trading_routes(app: FastAPI, ctx: RouteContext) -> None:
         return {
             'agent_id': row['id'],
             'agent_name': row['name'],
+            'agent_identity_status': agent_identity_status(row),
+            'agent_is_verified': agent_is_verified(row),
             'cash': row['cash'],
             'position_count': row['position_count'] or 0,
             'recent_activity_at': row['recent_activity_at'],

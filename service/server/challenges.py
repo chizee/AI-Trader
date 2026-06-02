@@ -12,7 +12,7 @@ from challenge_scoring import score_challenge_results
 from database import begin_write_transaction, get_db_connection
 from experiment_events import record_event
 from rewards import grant_agent_reward
-from routes_shared import utc_now_iso_z
+from routes_shared import agent_identity_status, agent_is_verified, utc_now_iso_z
 
 
 class ChallengeError(ValueError):
@@ -278,7 +278,7 @@ def get_challenge(challenge_key: str) -> dict[str, Any]:
         challenge = _load_challenge(cursor, challenge_key=challenge_key)
         cursor.execute(
             """
-            SELECT cp.*, a.name AS agent_name
+            SELECT cp.*, a.name AS agent_name, a.identity_status AS agent_identity_status
             FROM challenge_participants cp
             JOIN agents a ON a.id = cp.agent_id
             WHERE cp.challenge_id = ?
@@ -286,7 +286,12 @@ def get_challenge(challenge_key: str) -> dict[str, Any]:
             """,
             (challenge['id'],),
         )
-        participants = [dict(row) for row in cursor.fetchall()]
+        participants = []
+        for row in cursor.fetchall():
+            participant = dict(row)
+            participant['agent_identity_status'] = agent_identity_status(row)
+            participant['agent_is_verified'] = agent_is_verified(row)
+            participants.append(participant)
         result = _serialize_challenge(challenge, len(participants))
         result['participants'] = participants
         return result
@@ -336,7 +341,7 @@ def join_challenge(challenge_key: str, agent_id: int, data: Any = None) -> dict[
 
         cursor.execute(
             """
-            SELECT cp.*, a.name AS agent_name
+            SELECT cp.*, a.name AS agent_name, a.identity_status AS agent_identity_status
             FROM challenge_participants cp
             JOIN agents a ON a.id = cp.agent_id
             WHERE cp.challenge_id = ? AND cp.agent_id = ?
@@ -345,8 +350,11 @@ def join_challenge(challenge_key: str, agent_id: int, data: Any = None) -> dict[
         )
         existing = cursor.fetchone()
         if existing:
+            participant = dict(existing)
+            participant['agent_identity_status'] = agent_identity_status(existing)
+            participant['agent_is_verified'] = agent_is_verified(existing)
             conn.commit()
-            return {'joined': False, 'idempotent': True, 'participant': dict(existing)}
+            return {'joined': False, 'idempotent': True, 'participant': participant}
 
         variant_key = _resolve_variant(cursor, challenge.get('experiment_key'), agent_id, payload.get('variant_key'))
         starting_cash = float(payload.get('starting_cash') or challenge.get('initial_capital') or 100000.0)
@@ -374,14 +382,17 @@ def join_challenge(challenge_key: str, agent_id: int, data: Any = None) -> dict[
 
         cursor.execute(
             """
-            SELECT cp.*, a.name AS agent_name
+            SELECT cp.*, a.name AS agent_name, a.identity_status AS agent_identity_status
             FROM challenge_participants cp
             JOIN agents a ON a.id = cp.agent_id
             WHERE cp.id = ?
             """,
             (participant_id,),
         )
-        participant = dict(cursor.fetchone())
+        participant_row = cursor.fetchone()
+        participant = dict(participant_row)
+        participant['agent_identity_status'] = agent_identity_status(participant_row)
+        participant['agent_is_verified'] = agent_is_verified(participant_row)
         return {'joined': True, 'idempotent': False, 'participant': participant}
     except Exception:
         conn.rollback()
@@ -586,7 +597,7 @@ def record_challenge_trades_for_signal(
 def _fetch_participants_and_trades(cursor: Any, challenge_id: int) -> tuple[list[dict[str, Any]], dict[int, list[dict[str, Any]]]]:
     cursor.execute(
         """
-        SELECT cp.*, a.name AS agent_name
+        SELECT cp.*, a.name AS agent_name, a.identity_status AS agent_identity_status
         FROM challenge_participants cp
         JOIN agents a ON a.id = cp.agent_id
         WHERE cp.challenge_id = ?
@@ -594,7 +605,12 @@ def _fetch_participants_and_trades(cursor: Any, challenge_id: int) -> tuple[list
         """,
         (challenge_id,),
     )
-    participants = [dict(row) for row in cursor.fetchall()]
+    participants = []
+    for row in cursor.fetchall():
+        participant = dict(row)
+        participant['agent_identity_status'] = agent_identity_status(row)
+        participant['agent_is_verified'] = agent_is_verified(row)
+        participants.append(participant)
 
     cursor.execute(
         """
@@ -622,7 +638,7 @@ def get_challenge_leaderboard(challenge_key: str) -> dict[str, Any]:
         challenge = _load_challenge(cursor, challenge_key=challenge_key)
         cursor.execute(
             """
-            SELECT cr.*, a.name AS agent_name, cp.disqualified_reason, cp.trade_count
+            SELECT cr.*, a.name AS agent_name, a.identity_status AS agent_identity_status, cp.disqualified_reason, cp.trade_count
             FROM challenge_results cr
             JOIN agents a ON a.id = cr.agent_id
             LEFT JOIN challenge_participants cp ON cp.challenge_id = cr.challenge_id AND cp.agent_id = cr.agent_id
@@ -631,15 +647,23 @@ def get_challenge_leaderboard(challenge_key: str) -> dict[str, Any]:
             """,
             (challenge['id'],),
         )
-        result_rows = [dict(row) for row in cursor.fetchall()]
+        result_rows = []
+        for row in cursor.fetchall():
+            result_row = dict(row)
+            result_row['agent_identity_status'] = agent_identity_status(row)
+            result_row['agent_is_verified'] = agent_is_verified(row)
+            result_rows.append(result_row)
         if result_rows:
             return {'challenge': _serialize_challenge(challenge), 'leaderboard': result_rows, 'provisional': False}
 
         participants, trades_by_agent = _fetch_participants_and_trades(cursor, challenge['id'])
         scored = score_challenge_results(challenge, participants, trades_by_agent)
         names = {item['agent_id']: item.get('agent_name') for item in participants}
+        identities = {item['agent_id']: item.get('agent_identity_status') for item in participants}
         for item in scored:
             item['agent_name'] = names.get(item['agent_id'])
+            item['agent_identity_status'] = agent_identity_status({'identity_status': identities.get(item['agent_id'])})
+            item['agent_is_verified'] = item['agent_identity_status'] == 'verified'
             item['metrics_json'] = _json_dumps(item.get('metrics'))
         scored.sort(key=lambda item: (item.get('rank') is None, item.get('rank') or 999999))
         return {'challenge': _serialize_challenge(challenge), 'leaderboard': scored, 'provisional': True}
@@ -885,7 +909,7 @@ def get_challenge_submissions(challenge_key: str, limit: int = 100, offset: int 
         total = cursor.fetchone()['total']
         cursor.execute(
             """
-            SELECT cs.*, a.name AS agent_name
+            SELECT cs.*, a.name AS agent_name, a.identity_status AS agent_identity_status
             FROM challenge_submissions cs
             JOIN agents a ON a.id = cs.agent_id
             WHERE cs.challenge_id = ?
@@ -894,9 +918,15 @@ def get_challenge_submissions(challenge_key: str, limit: int = 100, offset: int 
             """,
             (challenge['id'], limit, offset),
         )
+        submissions = []
+        for row in cursor.fetchall():
+            submission = dict(row)
+            submission['agent_identity_status'] = agent_identity_status(row)
+            submission['agent_is_verified'] = agent_is_verified(row)
+            submissions.append(submission)
         return {
             'challenge': _serialize_challenge(challenge),
-            'submissions': [dict(row) for row in cursor.fetchall()],
+            'submissions': submissions,
             'total': total,
         }
     finally:

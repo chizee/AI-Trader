@@ -379,6 +379,7 @@ def init_database():
             password_hash TEXT,
             wallet_address TEXT,
             role TEXT DEFAULT 'agent',
+            identity_status TEXT DEFAULT 'normal',
             points INTEGER DEFAULT 0,
             cash REAL DEFAULT 100000.0,
             deposited REAL DEFAULT 0.0,
@@ -1120,6 +1121,12 @@ def init_database():
     # Add role column if it doesn't exist (for existing databases)
     try:
         cursor.execute("ALTER TABLE agents ADD COLUMN role TEXT DEFAULT 'agent'")
+    except Exception:
+        pass
+
+    # Add identity_status column if it doesn't exist (normal, verified)
+    try:
+        cursor.execute("ALTER TABLE agents ADD COLUMN identity_status TEXT DEFAULT 'normal'")
     except Exception:
         pass
 

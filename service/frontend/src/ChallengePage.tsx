@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 
-import { API_BASE, MARKETS, useLanguage } from './appShared'
+import { AgentName, API_BASE, MARKETS, isVerifiedAgent, useLanguage } from './appShared'
 
 type ChallengePageProps = {
   token?: string | null
@@ -348,7 +348,11 @@ export function ChallengePage({ token, canAdmin = false }: ChallengePageProps) {
                 {leaderboard.map((row) => (
                   <div key={`${row.agent_id}-${row.rank || 'dq'}`} className={`challenge-rank-row ${row.disqualified_reason ? 'disqualified' : ''}`}>
                     <span className="challenge-rank-number">{row.rank ? `#${row.rank}` : 'DQ'}</span>
-                    <span className="challenge-agent-name">{row.agent_name || `Agent ${row.agent_id}`}</span>
+                    <AgentName
+                      name={row.agent_name || `Agent ${row.agent_id}`}
+                      verified={isVerifiedAgent(row, 'agent')}
+                      className="challenge-agent-name"
+                    />
                     <span
                       className={(row.return_pct || 0) >= 0 ? 'challenge-positive' : 'challenge-negative'}
                       data-label={language === 'zh' ? '收益' : 'Return'}
@@ -405,7 +409,9 @@ export function ChallengePage({ token, canAdmin = false }: ChallengePageProps) {
               {submissions.map((submission) => (
                 <article key={submission.id} className="challenge-submission-item">
                   <div>
-                    <strong>{submission.agent_name}</strong>
+                    <strong>
+                      <AgentName name={submission.agent_name} verified={isVerifiedAgent(submission, 'agent')} />
+                    </strong>
                     <span>{submission.submission_type}</span>
                   </div>
                   <p>{submission.content}</p>

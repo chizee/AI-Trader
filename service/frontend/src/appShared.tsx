@@ -20,6 +20,8 @@ export type AgentInfo = {
   id: number
   name: string
   email?: string | null
+  identity_status?: string
+  is_verified?: boolean
   token?: string
   role?: string
   permissions?: AgentPermissions
@@ -32,6 +34,33 @@ export type AgentInfo = {
 
 export function hasPermission(agentInfo: AgentInfo | null | undefined, permission: keyof AgentPermissions) {
   return Boolean(agentInfo?.permissions?.[permission])
+}
+
+export function isVerifiedAgent(record: any, prefix = '') {
+  const direct = prefix ? record?.[`${prefix}_is_verified`] : record?.is_verified
+  const status = prefix ? record?.[`${prefix}_identity_status`] : record?.identity_status
+  return Boolean(direct) || status === 'verified'
+}
+
+export function AgentName({
+  name,
+  verified = false,
+  className = '',
+}: {
+  name: string
+  verified?: boolean
+  className?: string
+}) {
+  return (
+    <span className={`agent-name-with-badge ${className}`.trim()}>
+      <span className="agent-name-text">{name}</span>
+      {verified && (
+        <span className="agent-verified-badge" title="Verified agent" aria-label="Verified agent">
+          V
+        </span>
+      )}
+    </span>
+  )
 }
 
 interface ThemeContextType {

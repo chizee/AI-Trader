@@ -152,6 +152,21 @@ class LeaderboardMetricTests(unittest.TestCase):
         self.assertEqual(drawdowns[:3], [0.0, 0.0, 50.0])
         self.assertEqual(drawdowns[-1], 50.0)
 
+    def test_profit_history_exposes_agent_identity_status(self):
+        agent_id = self._create_agent("verified-leaderboard-agent", 150000.0)
+        conn = database.get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE agents SET identity_status = 'verified' WHERE id = ?", (agent_id,))
+        conn.commit()
+        conn.close()
+
+        response = self.client.get("/api/profit/history?limit=1&offset=0&include_history=false")
+
+        self.assertEqual(response.status_code, 200, response.text)
+        agent = response.json()["top_agents"][0]
+        self.assertEqual(agent["identity_status"], "verified")
+        self.assertTrue(agent["is_verified"])
+
 
 if __name__ == "__main__":
     unittest.main()
